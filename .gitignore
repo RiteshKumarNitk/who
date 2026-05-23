@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+flutter_app/.packages
+flutter_app/.dart_tool/
+flutter_app/build/
+flutter_app/.flutter-plugins
+flutter_app/.flutter-plugins-dependencies
+
+# Build
+.next/
+out/
+dist/
+build/
+flutter_app/build/
+
+# Environment
+.env
+.env.local
+.env.production
+.env.development
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test
+coverage/
+.nyc_output/
+
+# Prisma
+prisma/migrations/
+
+# Docker
+docker-compose.override.yml
+
+# Misc
+*.pem
+*.key
+*.cert
+.cache/
+tmp/
+temp/

@@ -1,0 +1,907 @@
+// ============================================================
+// WHO GIS Surveillance Platform — Prisma Schema (PostgreSQL + PostGIS)
+// ============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions", "fullTextSearch"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto]
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  STATE_ADMIN
+  DISTRICT_ADMIN
+  BLOCK_ADMIN
+  MOIC
+  ANM
+  ASHA
+}
+
+enum HierarchyType {
+  STATE
+  DISTRICT
+  BLOCK
+  PLANNING_UNIT
+  ANM
+  ASHA
+}
+
+enum PlanningUnitType {
+  CHC
+  PHC
+  UPHC
+}
+
+enum BoundaryStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum SurveyStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SurveyType {
+  ROUTINE
+  VACCINATION
+  DISEASE_SURVEILLANCE
+  HOUSEHOLD_SURVEY
+  AREA_MAPPING
+}
+
+enum VaccinationStatus {
+  SCHEDULED
+  ADMINISTERED
+  MISSED
+  REFUSED
+  CONTRAINDICATED
+}
+
+enum DiseaseType {
+  AFP
+  MEASLES
+  RUBELLA
+  DIPHTHERIA
+  PERTUSSIS
+  TETANUS
+  COVID_19
+  CHOLERA
+  DENGUE
+  MALARIA
+  TUBERCULOSIS
+  OTHER
+}
+
+enum CaseStatus {
+  SUSPECTED
+  PROBABLE
+  CONFIRMED
+  DISCARDED
+  RECOVERED
+  DECEASED
+}
+
+enum CaseSeverity {
+  MILD
+  MODERATE
+  SEVERE
+  CRITICAL
+}
+
+enum SessionSiteType {
+  ANGANWADI
+  SCHOOL
+  CHC
+  PHC
+  UPHC
+  COMMUNITY_HALL
+  OTHER
+}
+
+enum SessionStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum NotificationType {
+  ALERT
+  REMINDER
+  TASK
+  UPDATE
+  WARNING
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum NotificationChannel {
+  IN_APP
+  SMS
+  EMAIL
+  PUSH
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCING
+  SYNCED
+  FAILED
+  CONFLICT
+}
+
+enum SyncEntityType {
+  SURVEY
+  GPS_POINT
+  VACCINATION
+  DISEASE_CASE
+  HOUSEHOLD
+  BOUNDARY
+}
+
+enum SyncOperation {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum WaterSource {
+  TAP
+  HAND_PUMP
+  WELL
+  POND
+  RIVER
+  OTHER
+}
+
+// ============================================================
+// AUTH & USERS
+// ============================================================
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  phone         String    @unique
+  passwordHash  String
+  name          String
+  nameHindi     String?
+  role          UserRole
+  designation   String?
+  employeeCode  String?   @unique
+  avatar        String?
+  language      String    @default("hi")
+  isActive      Boolean   @default(true)
+  isLocked      Boolean   @default(false)
+  lastLoginAt   DateTime?
+  lastLoginIp   String?
+  deviceId      String?
+
+  // Hierarchy linkage
+  hierarchyId   String?   @db.Uuid
+  hierarchyType HierarchyType?
+
+  // Relations
+  createdUsers     User[]          @relation("UserCreated")
+  updatedUsers     User[]          @relation("UserUpdated")
+  createdBy        String?         @db.Uuid
+  updatedBy        String?         @db.Uuid
+  creator          User?           @relation("UserCreated", fields: [createdBy], references: [id])
+  updater          User?           @relation("UserUpdated", fields: [updatedBy], references: [id])
+
+  devices               DeviceInfo[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  syncQueue             SyncQueueItem[]
+  diseaseCasesReported  DiseaseCase[]    @relation("ReportedBy")
+  diseaseCasesConfirmed DiseaseCase[]    @relation("ConfirmedBy")
+  validatedBoundaries   ASHABoundary[]   @relation("ValidatedBy")
+  capturedSurveyPoints  SurveyPoint[]        @relation("CapturedSurveyPoint")
+  conductedSurveys      SurveySession[]      @relation("ConductedSurvey")
+  capturedGpsPoints     GPSCoordinate[]       @relation("CapturedGpsPoint")
+  administeredVaccines  VaccinationRecord[]   @relation("AdministeredVaccine")
+  conductedSessions     VaccinationSession[]  @relation("ConductedVaccinationSession")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([hierarchyId, hierarchyType])
+  @@index([email])
+  @@index([phone])
+  @@map("users")
+}
+
+model DeviceInfo {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  deviceId    String
+  deviceName  String?
+  platform    String?  // ANDROID, IOS, WEB
+  osVersion   String?
+  appVersion  String?
+  isActive    Boolean  @default(true)
+  lastSyncAt  DateTime?
+  lastLoginAt DateTime?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+  @@index([deviceId])
+  @@map("device_info")
+}
+
+// ============================================================
+// MASTER HIERARCHY
+// ============================================================
+
+model State {
+  id         String     @id @default(uuid()) @db.Uuid
+  code       String     @unique
+  name       String
+  nameHindi  String?
+  isoCode    String     @unique
+  population Int        @default(0)
+  isActive   Boolean    @default(true)
+  districts  District[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([isoCode])
+  @@map("states")
+}
+
+model District {
+  id         String   @id @default(uuid()) @db.Uuid
+  code       String   @unique
+  name       String
+  nameHindi  String?
+  population Int      @default(0)
+  stateId    String   @db.Uuid
+  isActive   Boolean  @default(true)
+
+  state  State  @relation(fields: [stateId], references: [id])
+  blocks Block[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([stateId])
+  @@map("districts")
+}
+
+model Block {
+  id         String   @id @default(uuid()) @db.Uuid
+  code       String   @unique
+  name       String
+  nameHindi  String?
+  population Int      @default(0)
+  districtId String   @db.Uuid
+  isActive   Boolean  @default(true)
+
+  district       District       @relation(fields: [districtId], references: [id])
+  planningUnits  PlanningUnit[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([districtId])
+  @@map("blocks")
+}
+
+model PlanningUnit {
+  id        String          @id @default(uuid()) @db.Uuid
+  code      String          @unique
+  name      String
+  nameHindi String?
+  type      PlanningUnitType
+  blockId   String          @db.Uuid
+  location  String?
+  isActive  Boolean         @default(true)
+
+  block Block @relation(fields: [blockId], references: [id])
+  anms  ANM[]
+  sessionSites SessionSite[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([blockId])
+  @@map("planning_units")
+}
+
+model ANM {
+  id              String         @id @default(uuid()) @db.Uuid
+  code            String         @unique
+  name            String
+  nameHindi       String?
+  phone           String         @unique
+  planningUnitId  String         @db.Uuid
+  userId          String?        @db.Uuid
+  isActive        Boolean        @default(true)
+
+  planningUnit PlanningUnit @relation(fields: [planningUnitId], references: [id])
+  ashas        ASHA[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([planningUnitId])
+  @@index([phone])
+  @@map("anms")
+}
+
+model ASHA {
+  id        String            @id @default(uuid()) @db.Uuid
+  code      String            @unique
+  name      String
+  nameHindi String?
+  phone     String            @unique
+  anmId     String            @db.Uuid
+  userId    String?           @db.Uuid
+  isActive  Boolean           @default(true)
+
+  anm            ANM             @relation(fields: [anmId], references: [id])
+  areaBoundary   ASHABoundary?
+  households     Household[]
+  surveySessions SurveySession[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([anmId])
+  @@index([phone])
+  @@map("ashas")
+}
+
+// ============================================================
+// GIS — ASHA BOUNDARIES
+// ============================================================
+
+model ASHABoundary {
+  id          String        @id @default(uuid()) @db.Uuid
+  ashaId      String        @unique @db.Uuid
+  polygon     String
+  centroid    String
+  areaSqKm    Float         @default(0)
+  status      BoundaryStatus @default(DRAFT)
+  version     Int           @default(1)
+  validatedAt DateTime?
+  validatedBy String?       @db.Uuid
+
+  asha         ASHA           @relation(fields: [ashaId], references: [id])
+  surveyPoints SurveyPoint[]
+  validator    User?          @relation("ValidatedBy", fields: [validatedBy], references: [id])
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ashaId])
+  @@index([status])
+  @@map("asha_boundaries")
+}
+
+model SurveyPoint {
+  id         String                     @id @default(uuid()) @db.Uuid
+  boundaryId String                     @db.Uuid
+  sequence   Int
+  point      String
+  accuracy   Float?
+  altitude   Float?
+  timestamp  DateTime
+  capturedBy String                     @db.Uuid
+
+  boundary ASHABoundary @relation(fields: [boundaryId], references: [id])
+  capturer User         @relation("CapturedSurveyPoint", fields: [capturedBy], references: [id])
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([boundaryId])
+  @@index([capturedBy])
+  @@map("survey_points")
+}
+
+// ============================================================
+// SURVEYS & GPS TRACKING
+// ============================================================
+
+model SurveySession {
+  id          String       @id @default(uuid()) @db.Uuid
+  ashaId      String       @db.Uuid
+  date        DateTime
+  status      SurveyStatus @default(PLANNED)
+  type        SurveyType
+  householdId String?      @db.Uuid
+  startedAt   DateTime?
+  completedAt DateTime?
+  isOffline   Boolean      @default(false)
+  syncStatus  SyncStatus   @default(PENDING)
+
+  asha     ASHA           @relation(fields: [ashaId], references: [id])
+  household Household?    @relation(fields: [householdId], references: [id])
+  points   GPSCoordinate[]
+  conductedBy User?       @relation("ConductedSurvey", fields: [conductedById], references: [id])
+  conductedById String?   @db.Uuid
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ashaId])
+  @@index([date])
+  @@index([status])
+  @@index([syncStatus])
+  @@map("survey_sessions")
+}
+
+model GPSCoordinate {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String   @db.Uuid
+  point     String
+  accuracy  Float?
+  altitude  Float?
+  speed     Float?
+  bearing   Float?
+  timestamp DateTime
+  capturedBy String  @db.Uuid
+  isOffline Boolean  @default(false)
+
+  session SurveySession @relation(fields: [sessionId], references: [id])
+  capturer User         @relation("CapturedGpsPoint", fields: [capturedBy], references: [id])
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([timestamp])
+  @@map("gps_coordinates")
+}
+
+// ============================================================
+// HOUSEHOLDS
+// ============================================================
+
+model Household {
+  id              String      @id @default(uuid()) @db.Uuid
+  code            String      @unique
+  ashaId          String      @db.Uuid
+  headName        String
+  headNameHindi   String?
+  location        String
+  address         String
+  addressHindi    String?
+  pincode         String?
+  familyMembers   Int         @default(0)
+  belowPovertyLine Boolean    @default(false)
+  hasToilet       Boolean     @default(false)
+  hasElectricity  Boolean     @default(false)
+  waterSource     WaterSource @default(TAP)
+  isActive        Boolean     @default(true)
+
+  asha    ASHA          @relation(fields: [ashaId], references: [id])
+  members FamilyMember[]
+  children Child[]
+  surveySessions SurveySession[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ashaId])
+  @@index([code])
+  @@map("households")
+}
+
+model FamilyMember {
+  id               String  @id @default(uuid()) @db.Uuid
+  householdId      String  @db.Uuid
+  name             String
+  nameHindi        String?
+  relationship     String
+  age              Int
+  gender           String
+  phone            String?
+  aadhaar          String? @unique
+  isPregnant       Boolean @default(false)
+  isLactating      Boolean @default(false)
+  hasChronicDisease Boolean @default(false)
+  chronicDisease   String?
+
+  household Household @relation(fields: [householdId], references: [id])
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([householdId])
+  @@index([aadhaar])
+  @@map("family_members")
+}
+
+// ============================================================
+// CHILDREN & VACCINATION
+// ============================================================
+
+model Child {
+  id            String  @id @default(uuid()) @db.Uuid
+  householdId   String  @db.Uuid
+  name          String
+  nameHindi     String?
+  dateOfBirth   DateTime
+  gender        String
+  birthWeight   Float?
+  isHighRisk    Boolean @default(false)
+  highRiskReason String?
+  motherName    String
+  fatherName    String?
+  aadhaar       String? @unique
+  isActive      Boolean @default(true)
+
+  household Household @relation(fields: [householdId], references: [id])
+  vaccinations VaccinationRecord[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([householdId])
+  @@index([dateOfBirth])
+  @@index([isHighRisk])
+  @@map("children")
+}
+
+model Vaccine {
+  id             String   @id @default(uuid()) @db.Uuid
+  code           String   @unique
+  name           String
+  nameHindi      String?
+  doses          Int
+  ageStartMonths Int
+  ageEndMonths   Int
+  intervalDays   Int?
+  description    String?
+  isActive       Boolean  @default(true)
+
+  records VaccinationRecord[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@map("vaccines")
+}
+
+model VaccinationRecord {
+  id               String             @id @default(uuid()) @db.Uuid
+  childId          String             @db.Uuid
+  vaccineId        String             @db.Uuid
+  doseNumber       Int
+  scheduledDate    DateTime
+  administeredDate DateTime?
+  administeredBy   String?            @db.Uuid
+  sessionId        String?            @db.Uuid
+  siteId           String?            @db.Uuid
+  status           VaccinationStatus  @default(SCHEDULED)
+  batchNumber      String?
+  manufacturer     String?
+  adverseEvent     String?
+  notes            String?
+  isOffline        Boolean            @default(false)
+  syncStatus       SyncStatus         @default(PENDING)
+
+  child   Child   @relation(fields: [childId], references: [id])
+  vaccine Vaccine @relation(fields: [vaccineId], references: [id])
+  administeredByUser User? @relation("AdministeredVaccine", fields: [administeredBy], references: [id])
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([childId])
+  @@index([vaccineId])
+  @@index([status])
+  @@index([scheduledDate])
+  @@index([administeredDate])
+  @@index([syncStatus])
+  @@map("vaccination_records")
+}
+
+// ============================================================
+// DISEASE SURVEILLANCE
+// ============================================================
+
+model DiseaseCase {
+  id                 String       @id @default(uuid()) @db.Uuid
+  caseNumber         String       @unique
+  diseaseType        DiseaseType
+  status             CaseStatus   @default(SUSPECTED)
+  severity           CaseSeverity @default(MILD)
+  patientName        String
+  patientAge         Int
+  patientGender      String
+  location           String
+  address            String
+  householdId        String?      @db.Uuid
+  reportedBy         String       @db.Uuid
+  reportedAt         DateTime     @default(now())
+  confirmedAt        DateTime?
+  confirmedBy        String?      @db.Uuid
+  symptoms           String[]
+  onsetDate          DateTime
+  hospitalizationDate DateTime?
+  outcome            String?
+  isOutbreakRelated  Boolean      @default(false)
+  clusterId          String?      @db.Uuid
+  contacts           Int          @default(0)
+  vaccinationStatus  String?
+  isOffline          Boolean      @default(false)
+  syncStatus         SyncStatus   @default(PENDING)
+
+  reporter User          @relation("ReportedBy", fields: [reportedBy], references: [id], map: "fk_disease_reported_by")
+  confirmer User?        @relation("ConfirmedBy", fields: [confirmedBy], references: [id], map: "fk_disease_confirmed_by")
+  cluster   DiseaseCluster? @relation(fields: [clusterId], references: [id])
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([diseaseType])
+  @@index([status])
+  @@index([onsetDate])
+  @@index([clusterId])
+  @@index([isOutbreakRelated])
+  @@index([syncStatus])
+  @@map("disease_cases")
+}
+
+model DiseaseCluster {
+  id          String      @id @default(uuid()) @db.Uuid
+  name        String
+  diseaseType DiseaseType
+  center      String
+  radius      Float       // meters
+  caseCount   Int         @default(0)
+  startDate   DateTime
+  endDate     DateTime?
+  status      String      @default("ACTIVE") // ACTIVE, CONTAINED, RESOLVED
+  assignedTeam String?    @db.Uuid
+
+  cases DiseaseCase[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([diseaseType])
+  @@index([status])
+  @@map("disease_clusters")
+}
+
+// ============================================================
+// SESSION SITES
+// ============================================================
+
+model SessionSite {
+  id             String         @id @default(uuid()) @db.Uuid
+  code           String         @unique
+  name           String
+  nameHindi      String?
+  type           SessionSiteType
+  location       String
+  planningUnitId String         @db.Uuid
+  ashaId         String?        @db.Uuid
+  isActive       Boolean        @default(true)
+
+  planningUnit PlanningUnit        @relation(fields: [planningUnitId], references: [id])
+  sessions     VaccinationSession[]
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@index([planningUnitId])
+  @@map("session_sites")
+}
+
+model VaccinationSession {
+  id                String        @id @default(uuid()) @db.Uuid
+  siteId            String        @db.Uuid
+  date              DateTime
+  startTime         String?
+  endTime           String?
+  type              SurveyType
+  status            SessionStatus @default(SCHEDULED)
+  plannedChildren   Int           @default(0)
+  vaccinatedChildren Int          @default(0)
+  conductedBy       String        @db.Uuid
+  ashaId            String?       @db.Uuid
+  anmId             String?       @db.Uuid
+  isOffline         Boolean       @default(false)
+  syncStatus        SyncStatus    @default(PENDING)
+
+  site       SessionSite @relation(fields: [siteId], references: [id])
+  conductor  User        @relation("ConductedVaccinationSession", fields: [conductedBy], references: [id])
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([siteId])
+  @@index([date])
+  @@index([status])
+  @@index([syncStatus])
+  @@map("vaccination_sessions")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+model Notification {
+  id            String             @id @default(uuid()) @db.Uuid
+  type          NotificationType
+  priority      NotificationPriority @default(MEDIUM)
+  title         String
+  titleHindi    String?
+  body          String
+  bodyHindi     String?
+  recipientId   String             @db.Uuid
+  recipientRole UserRole
+  channel       NotificationChannel @default(IN_APP)
+  isRead        Boolean            @default(false)
+  readAt        DateTime?
+  actionUrl     String?
+  metadata      Json?
+  expiresAt     DateTime?
+
+  recipient User @relation(fields: [recipientId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([recipientId])
+  @@index([type])
+  @@index([priority])
+  @@index([isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================================
+// OFFLINE SYNC QUEUE
+// ============================================================
+
+model SyncQueueItem {
+  id         String          @id @default(uuid()) @db.Uuid
+  entityType SyncEntityType
+  entityId   String          @db.Uuid
+  operation  SyncOperation
+  payload    Json
+  status     SyncStatus      @default(PENDING)
+  retryCount Int             @default(0)
+  maxRetries Int             @default(5)
+  lastError  String?
+  deviceId   String
+  userId     String          @db.Uuid
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  syncedAt  DateTime?
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([userId])
+  @@index([deviceId])
+  @@index([entityType, entityId])
+  @@map("sync_queue")
+}
+
+// ============================================================
+// AUDIT LOGS (archive-friendly, append-only)
+// ============================================================
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  action    String
+  entity    String
+  entityId  String   @db.Uuid
+  oldValue  Json?
+  newValue  Json?
+  ipAddress String?
+  userAgent String?
+  latitude  Float?
+  longitude Float?
+  metadata  Json?
+
+  user User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([action])
+  @@index([createdAt], type: Brin)
+  @@map("audit_logs")
+}
+
+// ============================================================
+// SYSTEM CONFIGURATION
+// ============================================================
+
+model SystemConfig {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  value       String
+  description String?
+  category    String   @default("GENERAL")
+  isEncrypted Boolean  @default(false)
+  updatedBy   String   @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@map("system_configs")
+}
