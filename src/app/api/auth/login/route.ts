@@ -34,6 +34,6 @@ export async function POST(req: Request) {
         { status: 423 }
       );
     }
-    return NextResponse.json({ success: true, data: null, debug: error.message });
+    return NextResponse.json({ success: true, data: null });
   }
 }
