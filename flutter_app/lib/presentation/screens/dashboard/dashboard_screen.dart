@@ -189,7 +189,7 @@ class _HomeTab extends StatelessWidget {
                   _actionButton(context, 'Offline Sync', Icons.sync, '/sync'),
                   _actionButton(context, 'Users', Icons.people, '/users'),
                   _actionButton(context, 'Settings', Icons.settings, '/settings'),
-                  _actionButton(context, 'Boundaries', Icons.boundary, '/boundary-approval'),
+                  _actionButton(context, 'Boundaries', Icons.hexagon_outlined, '/boundary-approval'),
                   _actionButton(context, 'Hierarchy', Icons.account_tree, '/hierarchy'),
                 ],
               ),

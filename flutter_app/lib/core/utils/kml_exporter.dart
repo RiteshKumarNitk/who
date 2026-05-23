@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:share_plus/share_plus.dart' show Share, XFile;
 import '../services/gps_service.dart';
 
 class KmlExporter {
@@ -142,12 +142,10 @@ class KmlExporter {
       duration: duration,
     );
     final file = await saveKmlFile(name: name.replaceAll(' ', '_'), kmlContent: kml);
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path)],
-        subject: 'GPS Tracking: $name',
-        text: 'GPS track exported from WHO GIS Surveillance',
-      ),
+    await Share.shareXFiles(
+      [XFile(file.path)],
+      subject: 'GPS Tracking: $name',
+      text: 'GPS track exported from WHO GIS Surveillance',
     );
   }
 }
