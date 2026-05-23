@@ -7,6 +7,7 @@ import 'app/app.dart';
 import 'core/constants/app_constants.dart';
 import 'core/di/injection_container.dart';
 import 'core/services/offline_sync_service.dart';
+import 'core/services/local_storage_service.dart';
 
 const String backgroundSyncTask = 'backgroundSync';
 
@@ -25,6 +26,8 @@ void main() async {
   await Hive.initFlutter();
   await AppConstants.getDeviceId();
   await configureDependencies();
+
+  await sl<LocalStorageService>().init();
 
   if (!kIsWeb) {
     Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
