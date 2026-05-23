@@ -9,6 +9,7 @@ import '../../presentation/screens/vaccination/vaccination_screen.dart';
 import '../../presentation/screens/disease/disease_report_screen.dart';
 import '../../presentation/screens/hierarchy/hierarchy_screen.dart';
 import '../../presentation/screens/profile/profile_screen.dart';
+import '../../presentation/screens/gps/gps_tracking_screen.dart';
 
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
@@ -31,6 +32,8 @@ class AppRouter {
         return MaterialPageRoute(builder: (_) => const DiseaseReportScreen());
       case HierarchyScreen.routeName:
         return MaterialPageRoute(builder: (_) => const HierarchyScreen());
+      case GpsTrackingScreen.routeName:
+        return MaterialPageRoute(builder: (_) => const GpsTrackingScreen());
       case ProfileScreen.routeName:
         return MaterialPageRoute(builder: (_) => const ProfileScreen());
       default:

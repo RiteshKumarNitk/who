@@ -181,6 +181,7 @@ class _HomeTab extends StatelessWidget {
                   _actionButton(context, 'Report Disease', Icons.bug_report, '/disease'),
                   _actionButton(context, 'Record Vaccination', Icons.vaccines, '/vaccination'),
                   _actionButton(context, 'View GIS Map', Icons.map, '/gis'),
+                  _actionButton(context, 'GPS Logger', Icons.satellite_alt, '/gps-tracking'),
                   _actionButton(context, 'Hierarchy', Icons.account_tree, '/hierarchy'),
                 ],
               ),
