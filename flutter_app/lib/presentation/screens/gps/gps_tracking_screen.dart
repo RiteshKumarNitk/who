@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import '../../../core/di/injection_container.dart' as di;
 import '../../../core/services/gps_service.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/utils/kml_exporter.dart';
 import '../../../core/theme/app_theme.dart';
 
 class GpsTrackingScreen extends StatefulWidget {
@@ -17,9 +18,10 @@ class GpsTrackingScreen extends StatefulWidget {
 class _GpsTrackingScreenState extends State<GpsTrackingScreen> {
   final _gpsService = di.sl<GpsService>();
   Position? _currentPosition;
-  Timer? _uiTimer;
   bool _isRecording = false;
   int _pointCount = 0;
+  bool _isSaving = false;
+  bool _isSharing = false;
   TrackingSummary? _summary;
 
   @override
@@ -65,6 +67,7 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> {
 
   Future<void> _saveRecording() async {
     if (_summary == null) return;
+    setState(() => _isSaving = true);
     try {
       final api = di.sl<ApiService>();
       await api.post('/api/surveys', data: {
@@ -90,12 +93,35 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> {
           SnackBar(content: Text('Save error: $e'), backgroundColor: AppColors.danger),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _shareKml() async {
+    if (_summary == null) return;
+    setState(() => _isSharing = true);
+    try {
+      await KmlExporter.shareKml(
+        name: 'GPS_Track_${DateTime.now().millisecondsSinceEpoch}',
+        points: _gpsService.trackedPoints,
+        totalDistanceKm: _summary!.totalDistanceKm,
+        areaSqMeters: _summary!.areaSqMeters,
+        duration: _summary!.duration,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Share error: $e'), backgroundColor: AppColors.danger),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSharing = false);
     }
   }
 
   @override
   void dispose() {
-    _uiTimer?.cancel();
     super.dispose();
   }
 
@@ -206,17 +232,36 @@ class _GpsTrackingScreenState extends State<GpsTrackingScreen> {
             _dataRow('Points', '${s.pointCount}'),
             _dataRow('Avg Accuracy', '${s.avgAccuracy.toStringAsFixed(1)} m'),
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _saveRecording,
-                icon: const Icon(Icons.save),
-                label: const Text('Save Recording'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.success,
-                  foregroundColor: Colors.white,
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isSaving ? null : _saveRecording,
+                    icon: _isSaving
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.save),
+                    label: const Text('Save'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isSharing ? null : _shareKml,
+                    icon: _isSharing
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.share),
+                    label: const Text('Share KML'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
