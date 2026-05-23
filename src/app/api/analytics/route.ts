@@ -3,6 +3,8 @@ import prisma from "@lib/prisma/client";
 import { withAuth } from "@shared/middleware/auth";
 import type { AuthenticatedRequest } from "@shared/middleware/auth";
 
+export const dynamic = "force-dynamic";
+
 export const GET = withAuth(async (req: AuthenticatedRequest) => {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);

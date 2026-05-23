@@ -3,6 +3,8 @@ import { GisService } from "@modules/gis/gis.service";
 import { withAuth } from "@shared/middleware/auth";
 import type { AuthenticatedRequest } from "@shared/middleware/auth";
 
+
+export const dynamic = "force-dynamic";
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const body = await req.json();
   const { lat, lng } = body;

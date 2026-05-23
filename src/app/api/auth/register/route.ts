@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { AuthService } from "@modules/auth/auth.service";
 import { registerSchema } from "@shared/validators";
 
+
+export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const body = await req.json();

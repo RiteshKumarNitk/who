@@ -3,6 +3,8 @@ import { SyncService } from "@modules/sync/sync.service";
 import { withAuth } from "@shared/middleware/auth";
 import type { AuthenticatedRequest } from "@shared/middleware/auth";
 
+
+export const dynamic = "force-dynamic";
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const body = await req.json();
   const { items, deviceId } = body;

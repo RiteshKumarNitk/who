@@ -4,6 +4,8 @@ import { loginSchema } from "@shared/validators";
 import { setAuthCookie } from "@lib/auth/jwt";
 import { logger } from "@lib/logger";
 
+
+export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
