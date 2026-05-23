@@ -53,9 +53,9 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> login({required String email, required String password}) async {
+  Future<Map<String, dynamic>?> login({required String email, required String password}) async {
     final response = await _dio.post('/api/auth/login', data: {'email': email, 'password': password});
-    return response.data['data'];
+    return response.data['data'] as Map<String, dynamic>?;
   }
 
   Future<Map<String, dynamic>> getProfile() async {

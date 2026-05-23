@@ -49,15 +49,25 @@ class AuthRepository {
   Future<User> login({required String email, required String password}) async {
     try {
       final response = await apiService.login(email: email, password: password);
-      final tokens = response['tokens'] as Map<String, dynamic>;
+      if (response == null) {
+        throw const ServerFailure('Server returned empty response. Try again.');
+      }
+      final tokens = response['tokens'] as Map<String, dynamic>?;
+      if (tokens == null || tokens['accessToken'] == null) {
+        throw const ServerFailure('Invalid server response - no auth token.');
+      }
       await _writeToken(tokens['accessToken'] as String);
-      final user = User.fromJson(response['user'] as Map<String, dynamic>);
-      await localStorage.saveUserData(response['user'] as Map<String, dynamic>);
+      final userData = response['user'] as Map<String, dynamic>?;
+      if (userData == null) {
+        throw const ServerFailure('Invalid server response - no user data.');
+      }
+      final user = User.fromJson(userData);
+      await localStorage.saveUserData(userData);
       return user;
     } on ServerFailure {
       rethrow;
     } catch (e) {
-      throw const ServerFailure('Login failed. Check your credentials.');
+      throw ServerFailure(e.toString());
     }
   }
 
