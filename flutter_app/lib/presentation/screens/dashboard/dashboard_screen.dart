@@ -6,10 +6,8 @@ import '../../../core/bloc/auth/auth_event.dart';
 import '../../../core/bloc/auth/auth_state.dart';
 import '../../../core/di/injection_container.dart' as di;
 import '../../../core/models/dashboard_stats.dart';
-import '../../../core/repositories/auth_repository.dart';
 import '../../../core/services/api_service.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../widgets/stat_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   static const String routeName = '/dashboard';
@@ -23,6 +21,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DashboardStats _stats = DashboardStats();
   bool _isLoading = true;
   int _currentIndex = 0;
+  String _userName = '';
 
   @override
   void initState() {
@@ -31,91 +30,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadStats() async {
+    setState(() => _isLoading = true);
     try {
       final api = di.sl<ApiService>();
       final data = await api.getDashboardStats();
-      setState(() { _stats = DashboardStats.fromJson(data); _isLoading = false; });
+      final authState = context.read<AuthBloc>().state;
+      String name = '';
+      if (authState is AuthAuthenticated) name = authState.user.name;
+      setState(() {
+        _stats = DashboardStats.fromJson(data);
+        _userName = name;
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _showNotifications(BuildContext context) async {
-    try {
-      final api = di.sl<ApiService>();
-      final res = await api.get('/api/notifications', queryParameters: {'limit': '20'});
-      final items = (res['data'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
-
-      if (!context.mounted) return;
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-        builder: (_) => DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          minChildSize: 0.3,
-          expand: false,
-          builder: (_, scrollController) => Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-                const SizedBox(height: 16),
-                Text('Notifications', style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 12),
-                if (items.isEmpty)
-                  const Expanded(child: Center(child: Text('No notifications', style: TextStyle(color: Colors.grey))))
-                else
-                  Expanded(
-                    child: ListView.separated(
-                      controller: scrollController,
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (_, i) {
-                        final n = items[i];
-                        final isRead = n['isRead'] == true;
-                        return ListTile(
-                          leading: Icon(
-                            n['type'] == 'ALERT' ? Icons.warning_amber : n['type'] == 'REMINDER' ? Icons.notifications_active : Icons.notifications,
-                            color: n['priority'] == 'URGENT' ? AppColors.danger : n['priority'] == 'HIGH' ? AppColors.warning : AppColors.info,
-                          ),
-                          title: Text(n['title'] as String? ?? '', style: TextStyle(fontWeight: isRead ? FontWeight.normal : FontWeight.bold, fontSize: 14)),
-                          subtitle: Text(n['body'] as String? ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                          trailing: Text(
-                            n['createdAt'] != null ? DateFormat('dd MMM').format(DateTime.parse(n['createdAt'] as String)) : '',
-                            style: const TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      );
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not load notifications')));
-      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('WHO GIS'),
+        title: Text('WHO GIS', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white)),
         actions: [
-          IconButton(icon: const Icon(Icons.notifications_outlined), onPressed: () => _showNotifications(context)),
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () => Navigator.pushNamed(context, '/notifications-list'),
+          ),
         ],
       ),
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          _HomeTab(stats: _stats, isLoading: _isLoading, onRefresh: _loadStats),
+          _HomeTab(stats: _stats, isLoading: _isLoading, onRefresh: _loadStats, userName: _userName),
           const _MapTab(),
           const _ProfileTab(),
         ],
@@ -137,8 +85,9 @@ class _HomeTab extends StatelessWidget {
   final DashboardStats stats;
   final bool isLoading;
   final VoidCallback onRefresh;
+  final String userName;
 
-  const _HomeTab({required this.stats, required this.isLoading, required this.onRefresh});
+  const _HomeTab({required this.stats, required this.isLoading, required this.onRefresh, required this.userName});
 
   @override
   Widget build(BuildContext context) {
@@ -147,72 +96,166 @@ class _HomeTab extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Dashboard', style: Theme.of(context).textTheme.headlineMedium),
+          Text('Welcome${userName.isNotEmpty ? ', $userName' : ''}', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 4),
           Text('Public Health GIS Surveillance', style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 20),
           if (isLoading)
             const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
           else
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 1.3,
-              children: [
-                StatCard(icon: Icons.people, label: 'ASHA Areas', value: '${stats.totalAshaAreas}', color: AppColors.primary),
-                StatCard(icon: Icons.home, label: 'Households', value: '${stats.totalHouseholds}', color: AppColors.success),
-                StatCard(icon: Icons.child_care, label: 'Children', value: '${stats.totalChildren}', color: AppColors.info),
-                StatCard(icon: Icons.vaccines, label: 'Vaccinated', value: '${stats.vaccinatedCount}', color: AppColors.warning),
-              ],
-            ),
+            _buildStatsGrid(),
           const SizedBox(height: 20),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Quick Actions', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  _actionButton(context, 'New Survey', Icons.assignment, '/surveys'),
-                  _actionButton(context, 'Report Disease', Icons.bug_report, '/disease'),
-                  _actionButton(context, 'Record Vaccination', Icons.vaccines, '/vaccination'),
-                  _actionButton(context, 'View GIS Map', Icons.map, '/gis'),
-                  _actionButton(context, 'GPS Logger', Icons.satellite_alt, '/gps-tracking'),
-                  _actionButton(context, 'Households', Icons.home, '/households'),
-                  _actionButton(context, 'Children', Icons.child_care, '/children'),
-                  _actionButton(context, 'Sessions', Icons.event, '/sessions'),
-                  _actionButton(context, 'Notifications', Icons.notifications, '/notifications-list'),
-                  _actionButton(context, 'Offline Sync', Icons.sync, '/sync'),
-                  _actionButton(context, 'Users', Icons.people, '/users'),
-                  _actionButton(context, 'Settings', Icons.settings, '/settings'),
-                  _actionButton(context, 'Boundaries', Icons.hexagon_outlined, '/boundary-approval'),
-                  _actionButton(context, 'Hierarchy', Icons.account_tree, '/hierarchy'),
-                ],
-              ),
-            ),
+          _buildSection(context, 'Field Work', [
+            _ActionItem('New Survey', Icons.assignment, '/survey-form', AppColors.primary),
+            _ActionItem('Report Disease', Icons.bug_report, '/disease', AppColors.danger),
+            _ActionItem('Vaccination', Icons.vaccines, '/vaccination', AppColors.success),
+            _ActionItem('GPS Logger', Icons.satellite_alt, '/gps-tracking', AppColors.warning),
+          ]),
+          const SizedBox(height: 12),
+          _buildSection(context, 'Data & Records', [
+            _ActionItem('Households', Icons.home, '/households', AppColors.info),
+            _ActionItem('Children', Icons.child_care, '/children', AppColors.primary),
+            _ActionItem('Sessions', Icons.event, '/sessions', AppColors.warning),
+            _ActionItem('Hierarchy', Icons.account_tree, '/hierarchy', AppColors.secondary),
+          ]),
+          const SizedBox(height: 12),
+          _buildSection(context, 'GIS & Administration', [
+            _ActionItem('GIS Map', Icons.map, '/gis', AppColors.info),
+            _ActionItem('Boundaries', Icons.hexagon_outlined, '/boundary-approval', AppColors.primary),
+            _ActionItem('Notifications', Icons.notifications, '/notifications-list', AppColors.warning),
+            _ActionItem('Offline Sync', Icons.sync, '/sync', AppColors.secondary),
+          ]),
+          const SizedBox(height: 12),
+          _buildSection(context, 'System', [
+            _ActionItem('Users', Icons.people, '/users', AppColors.primary),
+            _ActionItem('Settings', Icons.settings, '/settings', AppColors.textSecondary),
+          ]),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsGrid() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _statCard('ASHA Areas', '${stats.totalAshaAreas}', Icons.people, AppColors.primary)),
+            const SizedBox(width: 8),
+            Expanded(child: _statCard('Households', '${stats.totalHouseholds}', Icons.home, AppColors.success)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(child: _statCard('Children', '${stats.totalChildren}', Icons.child_care, AppColors.info)),
+            const SizedBox(width: 8),
+            Expanded(child: _statCard('Vaccinated', '${stats.vaccinatedCount}', Icons.vaccines, AppColors.warning)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(child: _statCard('Active Surveys', '${stats.activeSurveys}', Icons.assignment, AppColors.secondary)),
+            const SizedBox(width: 8),
+            Expanded(child: _statCard('Pending Cases', '${stats.pendingCases}', Icons.error_outline, AppColors.danger)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(child: _statCard('Total Users', '${stats.totalUsers}', Icons.group, AppColors.primary)),
+            const SizedBox(width: 8),
+            Expanded(child: _statCard('Offline Pending', '${stats.offlinePendingCount}', Icons.cloud_off, AppColors.textSecondary)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _statCard(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+              Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _actionButton(BuildContext context, String label, IconData icon, String route) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.primary),
-      title: Text(label),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => Navigator.pushNamed(context, route),
+  Widget _buildSection(BuildContext context, String title, List<_ActionItem> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppColors.textSecondary)),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            children: items.map((item) => _actionItemTile(context, item)).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionItemTile(BuildContext context, _ActionItem item) {
+    return InkWell(
+      onTap: () => Navigator.pushNamed(context, item.route),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: item.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+              child: Icon(item.icon, color: item.color, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(child: Text(item.label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500))),
+            const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+          ],
+        ),
+      ),
     );
   }
 }
 
+class _ActionItem {
+  final String label;
+  final IconData icon;
+  final String route;
+  final Color color;
+  const _ActionItem(this.label, this.icon, this.route, this.color);
+}
+
 class _MapTab extends StatelessWidget {
   const _MapTab();
-
   @override
   Widget build(BuildContext context) {
     return const Center(child: Text('Map View - Flutter Map integration'));
@@ -221,7 +264,6 @@ class _MapTab extends StatelessWidget {
 
 class _ProfileTab extends StatelessWidget {
   const _ProfileTab();
-
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AuthBloc, AuthState>(
@@ -232,24 +274,27 @@ class _ProfileTab extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             children: [
               const SizedBox(height: 20),
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: AppColors.primary,
-                child: Text(user.name.substring(0, 1).toUpperCase(), style: const TextStyle(fontSize: 32, color: Colors.white)),
+              Center(
+                child: CircleAvatar(
+                  radius: 44,
+                  backgroundColor: AppColors.primary,
+                  child: Text(user.name.substring(0, 1).toUpperCase(), style: const TextStyle(fontSize: 36, color: Colors.white)),
+                ),
               ),
               const SizedBox(height: 16),
-              Text(user.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              Text(user.role.replaceAll('_', ' '), textAlign: TextAlign.center, style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w500)),
+              Center(child: Text(user.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
+              Center(child: Text(user.role.replaceAll('_', ' '), style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w500))),
               const SizedBox(height: 32),
-              Card(
+              Container(
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
                 child: Column(
                   children: [
                     _infoTile(Icons.email_outlined, 'Email', user.email),
-                    const Divider(height: 1),
+                    const Divider(height: 1, indent: 56),
                     _infoTile(Icons.phone_outlined, 'Phone', user.phone),
-                    const Divider(height: 1),
+                    const Divider(height: 1, indent: 56),
                     _infoTile(Icons.badge_outlined, 'Employee Code', user.employeeCode ?? 'N/A'),
-                    const Divider(height: 1),
+                    const Divider(height: 1, indent: 56),
                     _infoTile(Icons.language, 'Language', user.language.toUpperCase()),
                   ],
                 ),
@@ -261,7 +306,11 @@ class _ProfileTab extends StatelessWidget {
                   onPressed: () => context.read<AuthBloc>().add(const AuthLogoutRequested()),
                   icon: const Icon(Icons.logout, color: AppColors.danger),
                   label: const Text('Sign Out', style: TextStyle(color: AppColors.danger)),
-                  style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.danger), minimumSize: const Size(double.infinity, 52)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.danger),
+                    minimumSize: const Size(double.infinity, 52),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
               ),
             ],
@@ -273,10 +322,21 @@ class _ProfileTab extends StatelessWidget {
   }
 
   Widget _infoTile(IconData icon, String label, String value) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.primary),
-      title: Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-      subtitle: Text(value, style: const TextStyle(fontSize: 16)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.primary, size: 22),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(value, style: const TextStyle(fontSize: 16)),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
