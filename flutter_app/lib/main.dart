@@ -30,7 +30,7 @@ void main() async {
   await sl<LocalStorageService>().init();
 
   if (!kIsWeb) {
-    Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+    Workmanager().initialize(callbackDispatcher);
     Workmanager().registerPeriodicTask(
       backgroundSyncTask,
       backgroundSyncTask,

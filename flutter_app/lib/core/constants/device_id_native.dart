@@ -17,7 +17,7 @@ Future<String> getDeviceIdImpl() async {
   }
   if (Platform.isLinux) {
     final info = await deviceInfo.linuxInfo;
-    return info.machineId;
+    return info.machineId ?? 'unknown-device';
   }
   if (Platform.isMacOS) {
     final info = await deviceInfo.macOsInfo;
